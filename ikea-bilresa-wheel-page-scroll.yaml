@@ -1,76 +1,51 @@
-blueprint:
-  name: Bilresa Scroll E-Ink Page Selector
-  description: >
-    Use IKEA Bilresa scroll wheel via Zigbee2MQTT to change pages
-    on an ESPHome e-ink display by cycling an ESPHome select entity.
-  domain: automation
-
-  input:
-    mqtt_topic:
-      name: Zigbee2MQTT topic
-      description: "Example: zigbee2mqtt/zb210"
-      default: "zigbee2mqtt/zb210"
-      selector:
-        text:
-
-    screen_selector:
-      name: ESPHome screen selector
-      description: The ESPHome select entity, e.g. select.eink_screen_selector
-      selector:
-        entity:
-          domain: select
-
-mode: restart
+alias: Bilresa Wheel Changes E-Ink Page
+description: Change ESPHome e-ink display page using IKEA Bilresa action_level
+mode: single
 max_exceeded: silent
 
 trigger:
   - platform: mqtt
-    id: scroll_start
-    topic: !input mqtt_topic
-    payload: "brightness_move_to_level"
-    value_template: "{{ value_json.action }}"
+    topic: zigbee2mqtt/YOUR_BILRESA_NAME
+
+condition:
+  - condition: template
+    value_template: >
+      {{ trigger.payload_json.action_level is defined }}
 
 action:
   - variables:
-      start_val: "{{ 255 if trigger.payload_json.brightness is none else trigger.payload_json.brightness | int }}"
-      selector_entity: !input screen_selector
-
-  - wait_for_trigger:
-      - platform: mqtt
-        id: scroll
-        topic: !input mqtt_topic
-        payload: "brightness_move_to_level"
-        value_template: "{{ value_json.action }}"
-    timeout:
-      seconds: 1
-    continue_on_timeout: false
-
-  - variables:
-      raw_val: "{{ wait.trigger.payload_json.brightness }}"
-      new_val: "{{ 255 if raw_val is none else raw_val | int }}"
-      direction: >
-        {% set delta = (new_val | int) - (start_val | int) %}
-        {% if delta > 0 or new_val >= 255 %}
-          1
-        {% elif delta < 0 or new_val <= 1 %}
-          -1
-        {% else %}
-          0
-        {% endif %}
+      new_level: "{{ trigger.payload_json.action_level | int }}"
+      old_level: "{{ states('input_number.bilresa_last_action_level') | int }}"
+      screen_selector: select.YOUR_ESPHOME_SCREEN_SELECTOR
 
   - choose:
-      - conditions: "{{ direction | int == 1 }}"
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ new_level > old_level }}
         sequence:
           - service: select.select_next
             target:
-              entity_id: !input screen_selector
+              entity_id: "{{ screen_selector }}"
             data:
               cycle: true
 
-      - conditions: "{{ direction | int == -1 }}"
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ new_level < old_level }}
         sequence:
           - service: select.select_previous
             target:
-              entity_id: !input screen_selector
+              entity_id: "{{ screen_selector }}"
             data:
               cycle: true
+
+  - delay:
+      milliseconds: 500
+
+  - service: input_number.set_value
+    target:
+      entity_id: input_number.bilresa_last_action_level
+    data:
+      value: "{{ new_level }}"
