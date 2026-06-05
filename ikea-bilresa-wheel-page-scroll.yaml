@@ -8,7 +8,8 @@ blueprint:
   input:
     mqtt_topic:
       name: Zigbee2MQTT topic
-      description: Example: zigbee2mqtt/zb210
+      description: "Example: zigbee2mqtt/zb210"
+      default: "zigbee2mqtt/zb210"
       selector:
         text:
 
