@@ -1,0 +1,75 @@
+blueprint:
+  name: Bilresa Scroll E-Ink Page Selector
+  description: >
+    Use IKEA Bilresa scroll wheel via Zigbee2MQTT to change pages
+    on an ESPHome e-ink display by cycling an ESPHome select entity.
+  domain: automation
+
+  input:
+    mqtt_topic:
+      name: Zigbee2MQTT topic
+      description: Example: zigbee2mqtt/bilresa_remote
+      selector:
+        text:
+
+    screen_selector:
+      name: ESPHome screen selector
+      description: The ESPHome select entity, e.g. select.eink_screen_selector
+      selector:
+        entity:
+          domain: select
+
+mode: restart
+max_exceeded: silent
+
+trigger:
+  - platform: mqtt
+    id: scroll_start
+    topic: !input mqtt_topic
+    payload: "brightness_move_to_level"
+    value_template: "{{ value_json.action }}"
+
+action:
+  - variables:
+      start_val: "{{ 255 if trigger.payload_json.brightness is none else trigger.payload_json.brightness | int }}"
+      selector_entity: !input screen_selector
+
+  - wait_for_trigger:
+      - platform: mqtt
+        id: scroll
+        topic: !input mqtt_topic
+        payload: "brightness_move_to_level"
+        value_template: "{{ value_json.action }}"
+    timeout:
+      seconds: 1
+    continue_on_timeout: false
+
+  - variables:
+      raw_val: "{{ wait.trigger.payload_json.brightness }}"
+      new_val: "{{ 255 if raw_val is none else raw_val | int }}"
+      direction: >
+        {% set delta = (new_val | int) - (start_val | int) %}
+        {% if delta > 0 or new_val >= 255 %}
+          1
+        {% elif delta < 0 or new_val <= 1 %}
+          -1
+        {% else %}
+          0
+        {% endif %}
+
+  - choose:
+      - conditions: "{{ direction | int == 1 }}"
+        sequence:
+          - service: select.select_next
+            target:
+              entity_id: !input screen_selector
+            data:
+              cycle: true
+
+      - conditions: "{{ direction | int == -1 }}"
+        sequence:
+          - service: select.select_previous
+            target:
+              entity_id: !input screen_selector
+            data:
+              cycle: true
